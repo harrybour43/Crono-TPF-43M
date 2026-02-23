@@ -60,16 +60,31 @@
             gap: 4px;
         }
         .lista-aulas li:last-child { border-bottom: none; }
-        .lista-aulas li.passada { opacity: 0.6; }
+        .lista-aulas li.passada { opacity: 0.5; }
         .lista-aulas li.proxima { 
-            background-color: #2a1b20; 
-            border-left: 4px solid #e91e63; 
+            background-color: #1e2a38; 
+            border-left: 4px solid #2196f3; 
             padding-left: 15px;
             border-radius: 0 4px 4px 0;
             margin: 10px 0;
         }
-        .badge-proxima { color: #e91e63; font-size: 0.8em; font-weight: bold; text-transform: uppercase; margin-left: 10px; }
+        .badge-proxima { color: #64b5f6; font-size: 0.8em; font-weight: bold; text-transform: uppercase; margin-left: 10px; }
+        .badge-hoje { color: #ff4081; font-size: 0.8em; font-weight: bold; text-transform: uppercase; margin-left: 10px; }
         .aula-docente { font-size: 0.9em; color: #aaa; }
+
+        /* Badge de UC Encerrada */
+        .uc-encerrada {
+            background-color: #1b2a20;
+            color: #4caf50;
+            padding: 12px;
+            text-align: center;
+            font-weight: bold;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            border: 1px solid #4caf50;
+            font-size: 0.9em;
+            letter-spacing: 0.5px;
+        }
     </style>
 </head>
 <body>
@@ -168,7 +183,6 @@
             "2026-07-01|UC13|Marcella Camillo|10", "2026-07-02|UC14|Jota Santos|8"
         ];
 
-        // Adicionada a chave 'codigoUC' para facilitar o filtro
         const aulas = rawAulas.map(linha => {
             const [data, uc, docente, aula] = linha.split('|');
             return {
@@ -180,17 +194,33 @@
             };
         });
 
-        // Pega data atual formatada
-        const hoje = new Date();
-        const offset = hoje.getTimezoneOffset() * 60000;
-        const dataHojeStr = (new Date(hoje - offset)).toISOString().split('T')[0];
+        // Função para determinar o status da aula considerando o horário (12:00)
+        function getStatusAula(dataAula) {
+            const agora = new Date();
+            // Montando a string YYYY-MM-DD usando a data local para evitar bugs de UTC
+            const ano = agora.getFullYear();
+            const mes = String(agora.getMonth() + 1).padStart(2, '0');
+            const dia = String(agora.getDate()).padStart(2, '0');
+            const hojeStr = `${ano}-${mes}-${dia}`;
+
+            if (dataAula < hojeStr) {
+                return "passada";
+            } else if (dataAula === hojeStr) {
+                if (agora.getHours() >= 12) {
+                    return "passada"; // Passou das 12h, a aula de hoje acabou.
+                } else {
+                    return "hoje"; // Ainda é antes das 12h, a aula está ativa/vai começar.
+                }
+            } else {
+                return "futura";
+            }
+        }
 
         function formatarDataBR(dataISO) {
             const [ano, mes, dia] = dataISO.split('-');
             return `${dia}/${mes}/${ano}`;
         }
 
-        // Função para popular o Select com as UCs disponíveis
         function popularSelect() {
             const select = document.getElementById('filtroUC');
             for (const [codigo, nome] of Object.entries(nomesUC)) {
@@ -201,42 +231,49 @@
             }
         }
 
-        // Event Listener para quando o usuário seleciona uma UC
+        // Evento de pesquisa por UC
         document.getElementById('filtroUC').addEventListener('change', function(e) {
             const ucSelecionada = e.target.value;
             const painelGeral = document.getElementById('painel');
             const painelPesquisa = document.getElementById('resultado-pesquisa');
 
             if (!ucSelecionada) {
-                // Se voltar pro "Selecione", mostra o painel normal e esconde a pesquisa
                 painelPesquisa.style.display = 'none';
                 painelGeral.style.display = 'flex';
                 return;
             }
 
-            // Esconde o painel normal e mostra o da pesquisa
             painelGeral.style.display = 'none';
             painelPesquisa.style.display = 'flex';
 
             const aulasDaUC = aulas.filter(a => a.codigoUC === ucSelecionada);
             
+            // Verifica se TODAS as aulas desta UC já estão no passado
+            const todasEncerradas = aulasDaUC.every(aula => getStatusAula(aula.data) === "passada");
+
             let html = `<div class="card" style="border-left-color: #ff9800;">
-                            <div class="uc-title">${nomesUC[ucSelecionada]}</div>
-                            <ul class="lista-aulas">`;
+                            <div class="uc-title">${nomesUC[ucSelecionada]}</div>`;
+            
+            // Adiciona o banner verde se a UC acabou
+            if (todasEncerradas && aulasDaUC.length > 0) {
+                html += `<div class="uc-encerrada">✅ UC Encerrada para a Turma 43M</div>`;
+            }
+
+            html += `<ul class="lista-aulas">`;
             
             let encontrouProxima = false;
 
             aulasDaUC.forEach(aula => {
+                const status = getStatusAula(aula.data);
                 let liClass = "";
                 let badge = "";
 
-                // Verifica se é a aula de hoje ou a mais próxima no futuro
-                if (aula.data >= dataHojeStr && !encontrouProxima) {
-                    liClass = "proxima";
-                    badge = `<span class="badge-proxima">🎯 Próxima Aula</span>`;
-                    encontrouProxima = true;
-                } else if (aula.data < dataHojeStr) {
+                if (status === "passada") {
                     liClass = "passada";
+                } else if ((status === "hoje" || status === "futura") && !encontrouProxima) {
+                    liClass = "proxima";
+                    badge = status === "hoje" ? `<span class="badge-hoje">🔥 Hoje</span>` : `<span class="badge-proxima">🎯 Próxima Aula</span>`;
+                    encontrouProxima = true;
                 }
 
                 html += `
@@ -255,19 +292,21 @@
             painelPesquisa.innerHTML = html;
         });
 
-        // Função Original (Renderiza o painel inicial)
+        // Renderiza o Painel Geral Principal
         function renderizarGeral() {
             let ultimaAula = null;
             let aulaHoje = null;
             let proximaAula = null;
 
             for (let aula of aulas) {
-                if (aula.data < dataHojeStr) {
-                    ultimaAula = aula;
-                } else if (aula.data === dataHojeStr) {
+                const status = getStatusAula(aula.data);
+                
+                if (status === "passada") {
+                    ultimaAula = aula; // Vai substituindo até ficar com a mais recente do passado
+                } else if (status === "hoje") {
                     aulaHoje = aula;
-                } else if (aula.data > dataHojeStr && !proximaAula) {
-                    proximaAula = aula;
+                } else if (status === "futura" && !proximaAula) {
+                    proximaAula = aula; // Pega apenas a primeira do futuro
                 }
             }
 
@@ -300,7 +339,7 @@
                 html += `
                 <div class="card today" style="background-color: #1e1e1e; border-color: #444;">
                     <div class="status" style="color: #aaa;">Hoje</div>
-                    <div class="details">Sem aulas programadas para hoje!</div>
+                    <div class="details">Sem aulas programadas ou o horário já encerrou!</div>
                 </div>`;
             }
 
@@ -316,18 +355,18 @@
                 </div>`;
             }
 
-            if (!proximaAula && !aulaHoje && ultimaAula && dataHojeStr > "2026-07-02") {
+            // Verifica se o curso acabou de vez (todas as aulas são "passada")
+            if (!proximaAula && !aulaHoje && ultimaAula) {
                  html += `
                 <div class="card today" style="border-left-color: #ffd700;">
                     <div class="status" style="color: #ffd700;">🎉 Curso Finalizado</div>
-                    <div class="details">Parabéns! Você concluiu o cronograma.</div>
+                    <div class="details">Parabéns! Vocês concluíram o cronograma.</div>
                 </div>`;
             }
 
             painel.innerHTML = html;
         }
 
-        // Inicialização
         popularSelect();
         renderizarGeral();
     </script>
